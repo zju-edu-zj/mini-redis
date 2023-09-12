@@ -5,12 +5,13 @@ use std::{
     net::SocketAddr, 
 };
 use volo_gen::myredis::{Kv,Varible,PingReq};
+use mini_redis::FilterLayer;
 
 lazy_static! {
     static ref CLIENT: volo_gen::myredis::RedisServeClient = {
         let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
         volo_gen::myredis::RedisServeClientBuilder::new("mini-redis")
-            // .layer_outer(LogLayer)
+            .layer_outer(FilterLayer)
             .address(addr)
             .build()
     };
@@ -40,13 +41,17 @@ async fn main(){
                 let key = args[0];
                 let req = Varible{key:FastStr::from(key.to_string())}; //clone once
                 //println!("{:?}", req);
-                if let Ok(resp) = CLIENT.get_var(req).await{
-                    if resp.val==0x7fffffff{
-                        println!("The key doesn't exist");
-                    }else{
-                        println!("{}",resp.val);
+                match CLIENT.get_var(req).await{
+                    Ok(resp) =>{
+                        if resp.val==0x7fffffff{
+                            println!("The key doesn't exist");
+                        }else{
+                            println!("{}",resp.val);
+                        }
                     }
-                    
+                    Err(resp) =>{
+                        println!("{:?}",resp);  //perhaps prohibited
+                    }
                 }
             }
             "set" => {
@@ -57,10 +62,10 @@ async fn main(){
                 
                     match CLIENT.set_var(req).await{
                         Ok(resp) => {
-                            println!("{:?}", resp); //success of fail
+                            println!("{:?}", resp.content); //success or fail
                         }
-                        Err(_resp)=>{
-                            println!("Internet error");  //since we always return Ok
+                        Err(resp)=>{
+                            println!("{:?}",resp);  //perhaps prohibited
                         }
                     }
                 }else{
@@ -68,26 +73,34 @@ async fn main(){
                 }
                 
             }
-            "delete" => {
+            "del" => {
                 let key = args[0];
                 let req = Varible{key:FastStr::from(key.to_string())};
                 match CLIENT.del_var(req).await{
                     Ok(resp) => {
-                        println!("{:?}", resp); //success of fail
+                        println!("{:?}", resp.content); //success of fail
                     }
-                    Err(_resp)=>{
-                        println!("Internet error");  //since we always return Ok
+                    Err(resp)=>{
+                        println!("{:?}",resp);  //perhaps prohibited
                     }
                 }
             }
             "ping" => {
                 let msg = args.join(" "); //to a particular string
-                let resp = if args.is_empty() {
+                let result = if args.is_empty() {
                     CLIENT.ping(PingReq { url: None }).await  //nothing
                 } else {
                     CLIENT.ping(PingReq { url: Some(FastStr::from(msg))}).await
                 };
-                println!("{:?}", resp); //a string
+                match result{
+                    Ok(resp)=>{
+                        println!("{:?}",resp.content); //a string
+                    }
+                    Err(resp)=>{
+                        println!("{:?}", resp); 
+                    }
+                }
+                
             }
             "exit" => {
                 break;
